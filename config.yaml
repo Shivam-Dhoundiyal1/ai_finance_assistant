@@ -1,0 +1,38 @@
+# Finnie - Configuration
+# Copy to .env for secrets or set environment variables
+
+app:
+  name: "Finnie"
+  version: "1.0.0"
+
+# LLM - set OPENAI_API_KEY or GEMINI_API_KEY in environment
+llm:
+  provider: "openai"  # openai | gemini
+  model: "gpt-4o-mini"
+  temperature: 0.3
+  max_tokens: 1024
+
+# RAG / Knowledge Base
+rag:
+  persist_directory: "data/chroma"
+  collection_name: "finance_knowledge"
+  embedding_model: "all-MiniLM-L6-v2"
+  chunk_size: 800
+  chunk_overlap: 200
+  top_k: 5
+  knowledge_path: "src/data/knowledge"
+
+# Market Data - set ALPHA_VANTAGE_API_KEY for real data
+market:
+  provider: "yfinance"  # yfinance | alpha_vantage
+  cache_ttl_seconds: 300
+  fallback_on_error: true
+
+# Agent routing keywords (workflow uses these to route queries)
+routing:
+  finance_qa: ["what is", "explain", "meaning of", "definition", "how does", "learn", "education", "basics"]
+  portfolio: ["portfolio", "holdings", "allocation", "diversification", "rebalance", "my stocks"]
+  market: ["price", "quote", "stock price", "market", "trading", "symbol", "ticker", "today's"]
+  goal_planning: ["goal", "retirement", "save", "target", "risk", "risk tolerance", "plan"]
+  news: ["news", "headlines", "latest", "current events", "happening"]
+  tax: ["tax", "ira", "401k", "roth", "deduction", "capital gains", "withholding"]

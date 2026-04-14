@@ -1,0 +1,21 @@
+{
+  "user_id": "test_user",
+  "holdings": [
+    {
+      "symbol": "MSFT",
+      "quantity": 5,
+      "avg_cost": 250.0
+    },
+    {
+      "symbol": "GOOGL",
+      "quantity": 8,
+      "avg_cost": 120.0
+    }
+  ],
+  "total_value": 2210.0,
+  "allocation": {
+    "MSFT": 56.56108597285068,
+    "GOOGL": 43.43891402714932
+  },
+  "last_updated": "2026-03-31T21:22:50.959039"
+}

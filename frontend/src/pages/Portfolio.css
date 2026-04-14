@@ -1,0 +1,74 @@
+.portfolio-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.portfolio-summary-card .summary-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0.5rem 0 0.25rem;
+}
+
+.portfolio-summary-card .summary-label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+}
+
+.portfolio-summary-card .summary-text {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  margin: 0;
+  padding: 1rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.allocation-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.allocation-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 48px;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.allocation-label {
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.allocation-bar-wrap {
+  height: 24px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.allocation-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+  transition: width 0.3s ease;
+}
+
+.allocation-pct {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.error-card {
+  color: var(--danger);
+}
+
+.muted {
+  color: var(--text-muted);
+}

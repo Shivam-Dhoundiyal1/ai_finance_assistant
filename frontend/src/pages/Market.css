@@ -1,0 +1,87 @@
+.market-form {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.market-input {
+  width: 140px;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  text-transform: uppercase;
+}
+
+.market-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.market-submit {
+  padding: 0.75rem 1.25rem;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+}
+
+.market-submit:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.market-submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.quote-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.quote-card {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.quote-symbol {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.quote-price {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.quote-currency {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.quote-label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.quote-change.positive {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.quote-change.negative {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.error-card {
+  color: var(--danger);
+  margin-bottom: 1rem;
+}
