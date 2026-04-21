@@ -8,6 +8,14 @@ export type ChatResponse = {
   sources: string[];
   routing_confidence: number;
   success: boolean;
+  attempt_count?: number;
+  critic_status?: string;
+  execution_trace?: Array<{
+    node: string;
+    status: string;
+    attempt: number;
+  }>;
+  system_status?: 'success' | 'retried' | 'fallback';
 };
 
 export type PortfolioData = {
@@ -41,6 +49,13 @@ export type Holding = {
   symbol: string;
   quantity: number;
   avg_cost: number;
+};
+
+export type HoldingWithPrice = {
+  symbol: string;
+  quantity: number;
+  currentPrice: number;
+  costBasis?: number;
 };
 
 export type QuoteResponse = {

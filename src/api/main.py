@@ -35,6 +35,9 @@ from src.data.portfolio_service import (
 from src.api.websocket_manager import manager
 from src.api.background_tasks import start_quote_fetcher, stop_quote_fetcher
 
+
+invoke_workflow = run_langgraph_workflow
+
 app = FastAPI(
     title="Finnie API",
     version="1.0.0",
@@ -60,6 +63,45 @@ class ChatResponse(BaseModel):
     agent: str
     sources: list[str] = []
     routing_confidence: float = 0.0
+    attempt_count: int = 0
+    critic_status: str = ""
+    execution_trace: list[dict[str, Any] | str] = []
+    system_status: str = "success"
+
+
+def _sanitize_execution_trace(trace: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    cleaned_trace: list[dict[str, Any]] = []
+    seen_steps: set[tuple[str, int]] = set()
+
+    for step in trace or []:
+        node = str(step.get("node", "")).strip()
+        if not node:
+            continue
+
+        attempt = int(step.get("attempt_count", 0) or 0)
+        normalized_name = node.replace("_", " ").title()
+        dedupe_key = (normalized_name, attempt)
+        if dedupe_key in seen_steps:
+            continue
+        seen_steps.add(dedupe_key)
+
+        cleaned_trace.append(
+            {
+                "node": normalized_name,
+                "status": str(step.get("status", "success")),
+                "attempt": attempt,
+            }
+        )
+
+    return cleaned_trace
+
+
+def _derive_system_status(result: dict[str, Any]) -> str:
+    if result.get("agent") == "finance_qa" and result.get("routing_confidence", 0.0) < 0.5:
+        return "fallback"
+    if result.get("attempt_count", 0) > 1:
+        return "retried"
+    return "success"
 
 
 class QuoteRequest(BaseModel):
@@ -134,15 +176,27 @@ async def health():
     return {"status": "ok", "app": get_settings().app_name}
 
 
+@app.get("/health")
+async def legacy_health():
+    return await health()
+
+
 @app.post("/api/v1/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
-        result = await run_langgraph_workflow(request.message)
+        result = await invoke_workflow(request.message)
+        execution_trace = _sanitize_execution_trace(result.get("execution_trace", []))
+        system_status = _derive_system_status(result)
+
         return ChatResponse(
             response=result["response"],
             agent=result["agent"],
             sources=result.get("sources", []),
             routing_confidence=result.get("routing_confidence", 0.0),
+            attempt_count=result.get("attempt_count", 0),
+            critic_status=result.get("critic_status", ""),
+            execution_trace=execution_trace,
+            system_status=system_status,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -32,7 +32,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [lastMessage, setLastMessage] = useState<MarketUpdate | null>(null);
   const reconnectAttempts = useRef(0);
-  const reconnectTimeout = useRef<NodeJS.Timeout>();
+  const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>();
   const subscribedSymbols = useRef<Set<string>>(new Set());
 
   const connect = useCallback(async () => {

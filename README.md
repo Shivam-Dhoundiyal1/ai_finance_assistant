@@ -1,132 +1,118 @@
 # Finnie
 
-**Democratizing Financial Literacy Through Intelligent Conversational AI**
+**Finnie is a production-ready, explainable financial intelligence assistant built with LangGraph, FastAPI, and React.**
 
-Capstone project: Applied Agentic AI for SWEs — Finnie.
+It combines multi-agent routing, retrieval-augmented generation, portfolio analytics, and self-correcting response evaluation into a single recruiter-facing system that is easy to inspect, reason about, and demonstrate.
+
+## Project Overview
+
+Finnie helps users explore financial questions across market data, portfolio analysis, long-term planning, tax topics, and general financial education.
+
+Instead of relying on a single generic chatbot, the system routes each request to the most appropriate specialist agent, retrieves supporting context when relevant, evaluates the generated answer with a critic step, and exposes execution metadata so system behavior is visible rather than opaque.
+
+This makes the project useful as both:
+- a practical AI finance assistant
+- a portfolio showcase for intelligent, observable backend systems
 
 ## Architecture
 
-**Data flow:**  
-`User Query → Workflow Router → Appropriate Agent(s) → RAG Retrieval → LLM Processing → Response Generation → User Interface`
+The core workflow is intentionally simple and production-oriented:
 
-### Components
+`User -> Router -> RAG -> Enrichment -> LLM -> Critic -> Response`
 
-| Component        | Role                                                                 |
-|-----------------|----------------------------------------------------------------------|
-| **Workflow**     | Routes the user message to one of six specialized agents.            |
-| **Agents**       | Finance Q&A, Portfolio Analysis, Market Analysis, Goal Planning, News Synthesizer, Tax Education. |
-| **RAG**          | Retrieves relevant chunks from a vector store (Chroma) over financial knowledge. |
-| **LLM**          | Generates responses (OpenAI or Gemini) with agent-specific prompts and context. |
-| **Backend**      | FastAPI REST API: `/api/v1/chat`, `/api/v1/market/quote/:symbol`, `/api/v1/portfolio/summary`. |
-| **Frontend**     | React (Vite) app: Chat, Portfolio, Market, About.                    |
+The system uses:
+- **LangGraph** for orchestration and retry control
+- **FastAPI** for backend APIs
+- **React + TypeScript** for the frontend
+- **Chroma** for retrieval-augmented generation
+- **Specialized agents** for finance Q&A, portfolios, market questions, goal planning, news, and tax
 
-### Project structure
+### Workflow Diagram
 
-```
-ai_finance_assistant/
-├── src/
-│   ├── api/          # FastAPI app (chat, market, portfolio endpoints)
-│   ├── agents/       # Six specialized agents
-│   ├── core/         # Config and settings
-│   ├── data/         # Knowledge markdown + market/portfolio services
-│   ├── rag/          # Ingest, retriever, knowledge base
-│   ├── web_app/      # (reserved)
-│   ├── utils/        # Logging, helpers
-│   └── workflow/     # Router and pipeline (route → RAG → LLM)
-├── frontend/         # React (Vite + TypeScript) UI
-├── tests/
-├── config.yaml
-├── requirements.txt
-├── run_api.py        # Run FastAPI backend
-├── run_ingest.py     # Ingest knowledge base
-└── README.md
+```mermaid
+graph TD
+    User[User Query] --> Router[Router]
+    Router --> RAG[RAG Retrieval]
+    RAG --> LLM[LLM Agent Response]
+    LLM --> Critic[Critic]
+    Critic -->|pass| Response[Response]
+    Critic -->|fail & attempts left| LLM
 ```
 
-## Setup
+## Key Features
 
-### Backend (Python)
+- **Multi-agent routing**: queries are routed to the most relevant financial specialist agent
+- **Confidence-aware fallback**: low-confidence routes fall back to a safe finance education agent
+- **Self-correction**: a critic node evaluates responses and can trigger a bounded retry loop
+- **Execution trace**: the API and UI expose workflow steps so system behavior is transparent
+- **Portfolio intelligence**: includes portfolio analysis, allocation insights, and supporting market data
+- **Recruiter-friendly observability**: responses include metadata showing how the answer was produced
 
-1. **Enter the project**
-   ```bash
-   cd ai_finance_assistant
-   ```
+## Example API Response
 
-2. **Virtual environment**
-   ```bash
-   python -m venv venv
-   # Windows:
-   venv\Scripts\activate
-   # macOS/Linux:
-   source venv/bin/activate
-   ```
+```json
+{
+  "response": "Diversification reduces concentration risk by spreading exposure across assets, sectors, and time horizons. This is for education only; consider consulting a financial advisor.",
+  "agent": "finance_qa",
+  "sources": ["01_stocks_101.md", "12_risk_management.md"],
+  "routing_confidence": 0.82,
+  "attempt_count": 1,
+  "critic_status": "pass",
+  "system_status": "success",
+  "execution_trace": [
+    {"node": "Router", "status": "success", "attempt": 0},
+    {"node": "Rag", "status": "success", "attempt": 0},
+    {"node": "Data Enrichment", "status": "success", "attempt": 0},
+    {"node": "Llm", "status": "success", "attempt": 1},
+    {"node": "Critic", "status": "success", "attempt": 1},
+    {"node": "Response Formatter", "status": "success", "attempt": 1}
+  ]
+}
+```
 
-3. **Install Python dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Why This Stands Out
 
-4. **Environment variables**  
-   Create a `.env` in the project root:
-   ```env
-   OPENAI_API_KEY=sk-...
-   # Optional: GEMINI_API_KEY=... and LLM_PROVIDER=gemini
-   ```
+Many AI demos stop at “LLM in, answer out.” Finnie goes further.
 
-5. **Ingest the knowledge base** (once)
-   ```bash
-   python run_ingest.py
-   ```
+- **Reliable**: responses are checked before being finalized
+- **Transparent**: the system exposes which agent handled the question and how the workflow progressed
+- **Production-ready**: bounded retries, fallback routing, typed API contracts, and clean frontend visibility are already in place
+- **Explainable**: hiring managers can inspect not only the answer, but the reasoning path the system took to generate it
 
-### Frontend (React)
+This makes Finnie feel like an engineered AI application, not an experimental prototype.
 
-1. **From project root**
-   ```bash
-   cd frontend
-   npm install
-   ```
+## Running the Project
 
-## Run (backend + frontend connected)
-
-1. **Start the API** (from project root)
-   ```bash
-   python run_api.py
-   ```
-   API runs at **http://127.0.0.1:8000**.
-
-2. **Start the React app** (from `frontend/`)
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-   App runs at **http://localhost:5173**. Vite proxies `/api` to the backend, so the UI talks to the same origin.
-
-3. Open **http://localhost:5173** in your browser. Use **Chat**, **Portfolio**, and **Market** tabs.
-
-## Configuration
-
-- **config.yaml** — App name, LLM provider/model, RAG paths, market provider, routing keywords.
-- **.env** — Secrets: `OPENAI_API_KEY`, `GEMINI_API_KEY`. Environment variables override `config.yaml`.
-
-## API (for the React frontend)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/health` | Health check |
-| POST | `/api/v1/chat` | Body: `{ "message": "..." }` → `{ "response", "agent", "sources" }` |
-| GET | `/api/v1/market/quote/{symbol}` | Stock quote |
-| GET | `/api/v1/portfolio/summary` | Sample portfolio summary |
-
-## Testing
+### Backend
 
 ```bash
-pip install pytest
-pytest tests/ -v
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+python run_ingest.py
+python run_api.py
 ```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Backend runs at `http://127.0.0.1:8000` and the frontend runs at `http://localhost:5173`.
+
+## Documentation
+
+For deeper technical detail, see:
+
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [API_REFERENCE.md](API_REFERENCE.md)
+- [SETUP.md](SETUP.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [UX_GUIDE.md](UX_GUIDE.md)
 
 ## Disclaimer
 
-This project is for **educational purposes only**. It does not provide financial, tax, or legal advice. Consult a qualified professional for your situation.
-
-## License
-
-MIT (or as required by your course).
+Finnie is for **educational use only** and does not provide financial, tax, or legal advice.

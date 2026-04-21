@@ -1,6 +1,6 @@
-import { ReactNode, useEffect, useState, useLayoutEffect } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Moon, Sun, Menu, TrendingUp, MessageSquare, PieChart, BarChart3, Info } from 'lucide-react'
+import { Moon, Sun, Menu, TrendingUp, MessageSquare, PieChart, BarChart3 } from 'lucide-react'
 
 export default function Layout({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<'light' | 'dark'>('light')

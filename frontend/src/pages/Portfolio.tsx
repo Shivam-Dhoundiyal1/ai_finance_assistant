@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, X } from 'lucide-react'
-import { apiService, type PortfolioData, type Holding } from '../api'
+import { apiService, type PortfolioData, type Holding, type HoldingWithPrice } from '../api'
 import PieChartComponent from '../components/Charts/PieChartComponent'
 import BarChartComponent from '../components/Charts/BarChartComponent'
 import LineChartComponent from '../components/Charts/LineChartComponent'
@@ -96,10 +96,11 @@ export default function Portfolio() {
     }
   }
 
-  const holdingsWithPrices = portfolio?.holdings.map(h => ({
+  const holdingsWithPrices: HoldingWithPrice[] = portfolio?.holdings.map(h => ({
     symbol: h.symbol,
     quantity: h.quantity,
-    currentPrice: h.avg_cost, // Using cost basis as current price for demo
+    currentPrice: h.avg_cost,
+    costBasis: h.avg_cost,
   })) || []
 
   const metrics = calculateMetrics()

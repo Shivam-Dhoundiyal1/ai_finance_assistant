@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
 interface HoldingData {
   symbol: string
@@ -78,7 +78,7 @@ export default function BarChartComponent({ holdings }: BarChartProps) {
             }}
           />
           <Bar dataKey="value" fill="#0ea5e9" radius={[8, 8, 0, 0]}>
-            {chartData.map((entry, index) => (
+            {chartData.map((_entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Bar>

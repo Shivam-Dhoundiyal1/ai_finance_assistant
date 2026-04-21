@@ -8,9 +8,18 @@ from src.workflow.langgraph_nodes import (
     rag_node,
     data_enrichment_node,
     llm_node,
+    critic_node,
     response_formatter_node,
 )
 from src.workflow.state import WorkflowState
+
+
+def _after_critic(state: WorkflowState) -> str:
+    if state.get("critic_status") == "pass":
+        return "response_formatter"
+    if state.get("attempt_count", 0) < state.get("max_attempts", 2):
+        return "llm"
+    return "response_formatter"
 
 
 def create_workflow() -> StateGraph:
@@ -24,6 +33,7 @@ def create_workflow() -> StateGraph:
     workflow.add_node("rag", rag_node)
     workflow.add_node("data_enrichment", data_enrichment_node)
     workflow.add_node("llm", llm_node)
+    workflow.add_node("critic", critic_node)
     workflow.add_node("response_formatter", response_formatter_node)
     
     # Define the flow
@@ -33,7 +43,15 @@ def create_workflow() -> StateGraph:
     workflow.add_edge("router", "rag")
     workflow.add_edge("rag", "data_enrichment")
     workflow.add_edge("data_enrichment", "llm")
-    workflow.add_edge("llm", "response_formatter")
+    workflow.add_edge("llm", "critic")
+    workflow.add_conditional_edges(
+        "critic",
+        _after_critic,
+        {
+            "llm": "llm",
+            "response_formatter": "response_formatter",
+        },
+    )
     workflow.add_edge("response_formatter", END)
     
     return workflow
@@ -58,6 +76,13 @@ async def run_langgraph_workflow(message: str) -> dict[str, Any]:
         "message": message,
         "agent": "",
         "reason": "",
+        "attempt_count": 0,
+        "max_attempts": 2,
+        "execution_trace": [],
+        "critic_status": "",
+        "critic_reason": "",
+        "retry_reason": "",
+        "fallback_agent": "",
     }
     
     # Execute the workflow
@@ -70,6 +95,9 @@ async def run_langgraph_workflow(message: str) -> dict[str, Any]:
         "reason": final_state.get("reason", ""),
         "sources": final_state.get("sources", []),
         "routing_confidence": final_state.get("routing_confidence", 0.0),
+        "attempt_count": final_state.get("attempt_count", 0),
+        "execution_trace": final_state.get("execution_trace", []),
+        "critic_status": final_state.get("critic_status", ""),
     }
 
 

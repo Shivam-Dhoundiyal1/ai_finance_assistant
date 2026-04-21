@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, PieChart, AlertCircle } from 'lucide-react'
+import { TrendingUp, TrendingDown, PieChart } from 'lucide-react';
 
 interface MetricsData {
   totalValue: number

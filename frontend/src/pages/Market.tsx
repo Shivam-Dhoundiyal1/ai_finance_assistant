@@ -59,6 +59,7 @@ export default function Market() {
           change: data.change,
           change_percent: data.change_percent,
           currency: 'USD',
+          source: 'websocket',
         },
       }))
       setLastUpdate(new Date())

@@ -1,5 +1,5 @@
-import React from 'react';
-import { ConnectionStatus } from '../hooks/useWebSocket';
+// Removed unused React import - using JSX auto-import
+import { ConnectionStatus } from '../../hooks/useWebSocket';
 
 interface ConnectionStatusProps {
   status: ConnectionStatus;

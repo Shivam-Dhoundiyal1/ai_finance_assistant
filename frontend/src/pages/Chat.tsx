@@ -9,6 +9,36 @@ type Message = {
   sources?: string[]
   routing_confidence?: number
   success?: boolean
+  attempt_count?: number
+  critic_status?: string
+  execution_trace?: Array<{
+    node: string
+    status: string
+    attempt: number
+  }>
+  system_status?: 'success' | 'retried' | 'fallback'
+}
+
+function getStatusPresentation(status?: Message['system_status']) {
+  if (status === 'retried') {
+    return {
+      icon: '🔁',
+      label: 'Retried',
+      className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
+    }
+  }
+  if (status === 'fallback') {
+    return {
+      icon: '⚠️',
+      label: 'Fallback',
+      className: 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300',
+    }
+  }
+  return {
+    icon: '✅',
+    label: 'Success',
+    className: 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300',
+  }
 }
 
 export default function Chat() {
@@ -43,6 +73,10 @@ export default function Chat() {
           sources: data.sources ?? [],
           routing_confidence: data.routing_confidence,
           success: data.success,
+          attempt_count: data.attempt_count,
+          critic_status: data.critic_status,
+          execution_trace: data.execution_trace,
+          system_status: data.system_status,
         },
       ])
     } catch (err) {
@@ -102,6 +136,11 @@ export default function Chat() {
           ) : (
             <div className="space-y-4">
               {messages.map((msg, i) => (
+                (() => {
+                  const statusPresentation = getStatusPresentation(msg.system_status)
+                  const flow = msg.execution_trace?.map((step) => step.node).join(' → ')
+
+                  return (
                 <div
                   key={i}
                   className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -114,19 +153,52 @@ export default function Chat() {
                   
                   <div className={`max-w-2xl ${msg.role === 'user' ? 'order-first' : ''}`}>
                     <div className={`message ${msg.role === 'user' ? 'message-user' : 'message-assistant'}`}>
-                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                      <div className="text-white whitespace-pre-wrap">{msg.content}</div>
                       
                       {msg.role === 'assistant' && msg.agent && (
-                        <div className="message-meta">
-                          <span className="flex items-center gap-1">
+                        <div className="space-y-3 mt-3">
+                          <div className="message-meta">
+                            <span className="flex items-center gap-1">
                             <Sparkles className="w-4 h-4" />
                             {msg.agent}
-                          </span>
-                          {msg.routing_confidence && (
-                            <span className="message-confidence">
-                              {(msg.routing_confidence * 100).toFixed(0)}% confidence
                             </span>
-                          )}
+                            {msg.routing_confidence !== undefined && (
+                              <span className="message-confidence">
+                                {(msg.routing_confidence * 100).toFixed(0)}% confidence
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 text-xs sm:text-sm space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-medium ${statusPresentation.className}`}>
+                                <span>{statusPresentation.icon}</span>
+                                <span>{statusPresentation.label}</span>
+                              </span>
+                              <span className="text-gray-600 dark:text-gray-300">
+                                Attempts: <span className="font-semibold">{msg.attempt_count ?? 0}</span>
+                              </span>
+                              <span className="text-gray-600 dark:text-gray-300">
+                                Critic: <span className="font-semibold capitalize">{msg.critic_status || 'n/a'}</span>
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-gray-600 dark:text-gray-300">
+                              <div>
+                                <span className="font-medium text-gray-800 dark:text-gray-100">Agent used:</span> {msg.agent}
+                              </div>
+                              <div>
+                                <span className="font-medium text-gray-800 dark:text-gray-100">Confidence:</span> {msg.routing_confidence !== undefined ? `${(msg.routing_confidence * 100).toFixed(0)}%` : 'n/a'}
+                              </div>
+                            </div>
+
+                            {flow && (
+                              <div>
+                                <div className="font-medium text-gray-800 dark:text-gray-100 mb-1">Execution Flow</div>
+                                <div className="text-gray-600 dark:text-gray-300 break-words">{flow}</div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                       
@@ -144,6 +216,8 @@ export default function Chat() {
                     </div>
                   )}
                 </div>
+                  )
+                })()
               ))}
               
               {loading && (

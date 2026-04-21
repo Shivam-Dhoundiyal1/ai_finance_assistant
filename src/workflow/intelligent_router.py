@@ -4,6 +4,23 @@ from typing import Any, Dict, List, Tuple
 from src.core.config import get_settings
 
 
+def _keyword_route(message: str) -> Tuple[str, str, float]:
+    """Deterministic fallback routing for test and no-LLM environments."""
+    text = message.lower()
+
+    if any(keyword in text for keyword in ["quote", "stock price", "ticker", "symbol", "market", "aapl", "tsla", "nvda"]):
+        return "market", "Keyword-based market routing", 0.6
+    if any(keyword in text for keyword in ["portfolio", "allocation", "rebalance", "holdings"]):
+        return "portfolio", "Keyword-based portfolio routing", 0.6
+    if any(keyword in text for keyword in ["ira", "401k", "roth", "tax", "capital gains", "deduction"]):
+        return "tax", "Keyword-based tax routing", 0.6
+    if any(keyword in text for keyword in ["retirement", "goal", "save for", "risk tolerance", "plan for"]):
+        return "goal_planning", "Keyword-based goal planning routing", 0.6
+    if any(keyword in text for keyword in ["news", "headline", "current events", "latest"]):
+        return "news", "Keyword-based news routing", 0.6
+    return "finance_qa", "General financial education", 0.0
+
+
 def _get_llm():
     """Return configured LLM for routing."""
     s = get_settings()
@@ -30,7 +47,7 @@ async def rephrase_and_retry(message: str) -> Tuple[str, str, float]:
     """Ask LLM to rephrase the message for better routing."""
     llm = _get_llm()
     if not llm:
-        return "finance_qa", "General financial education", 0.0
+        return _keyword_route(message)
         
     rephrase_prompt = f"""
     The user said: "{message}"
@@ -57,6 +74,12 @@ async def rephrase_and_retry(message: str) -> Tuple[str, str, float]:
                 # Validate agent name
                 valid_agents = ["finance_qa", "portfolio", "market", "goal_planning", "news", "tax"]
                 if agent in valid_agents:
+                    if confidence < 0.5:
+                        return (
+                            "finance_qa",
+                            f"Low routing confidence fallback from {agent}: {reason}",
+                            confidence,
+                        )
                     return agent, reason, confidence
     except Exception:
         pass
@@ -100,9 +123,13 @@ Where:
 Example response: AGENT|market|0.9|User is asking about stock price
 """
 
+    keyword_agent, keyword_reason, keyword_confidence = _keyword_route(message)
+    if keyword_agent != "finance_qa":
+        return keyword_agent, keyword_reason, keyword_confidence
+
     llm = _get_llm()
     if not llm:
-        return "finance_qa", "General financial education", 0.0
+        return keyword_agent, keyword_reason, keyword_confidence
 
     try:
         from langchain_core.messages import HumanMessage
@@ -120,6 +147,12 @@ Example response: AGENT|market|0.9|User is asking about stock price
                 # Validate agent name
                 valid_agents = ["finance_qa", "portfolio", "market", "goal_planning", "news", "tax"]
                 if agent in valid_agents:
+                    if confidence < 0.5:
+                        return (
+                            "finance_qa",
+                            f"Low routing confidence fallback from {agent}: {reason}",
+                            confidence,
+                        )
                     return agent, reason, confidence
         
         # Fallback if parsing fails - ask LLM to rephrase
