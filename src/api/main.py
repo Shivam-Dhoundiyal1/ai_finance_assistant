@@ -26,9 +26,9 @@ from src.data.market_service import get_quote
 from src.data.portfolio_service import (
     get_sample_portfolio, 
     get_user_portfolio, 
-    save_portfolio, 
-    update_portfolio, 
-    delete_holding,
+    save_portfolio as save_portfolio_service, 
+    update_portfolio as update_portfolio_service, 
+    delete_holding as delete_holding_service,
     calculate_portfolio_performance,
     analyze_allocation
 )
@@ -46,7 +46,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,7 +65,7 @@ class ChatResponse(BaseModel):
     routing_confidence: float = 0.0
     attempt_count: int = 0
     critic_status: str = ""
-    execution_trace: list[dict[str, Any] | str] = []
+    execution_trace: list[dict[str, Any]] = []
     system_status: str = "success"
 
 
@@ -160,14 +160,18 @@ class PortfolioAllocationResponse(BaseModel):
 # --- Startup/Shutdown Events ---
 @app.on_event("startup")
 async def startup_event():
-    """Start background tasks on server startup."""
-    await start_quote_fetcher()
+    try:
+        await start_quote_fetcher()
+    except Exception as e:
+        logger.warning(f"Background task failed: {e}")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Stop background tasks on server shutdown."""
-    await stop_quote_fetcher()
+    try:
+        await stop_quote_fetcher()
+    except Exception as e:
+        logger.warning(f"Shutdown task failed: {e}")
 
 
 # --- Routes ---
@@ -241,11 +245,13 @@ async def portfolio_summary():
 @app.post("/api/v1/portfolio", response_model=PortfolioResponse)
 async def save_portfolio(request: PortfolioRequest):
     try:
-        success = save_portfolio("default", request.holdings)
+        # Convert Pydantic models to dictionaries for service layer
+        holdings_dict = [h.model_dump() for h in request.holdings]
+        success = save_portfolio_service("default", holdings_dict)
         if success:
             return PortfolioResponse(
                 holdings=request.holdings,
-                total_value=sum(h["quantity"] * h.get("avg_cost", 0) for h in request.holdings),
+                total_value=sum(h.quantity * (h.avg_cost or 0) for h in request.holdings),
                 allocation=_calculate_allocation(request.holdings),
                 last_updated=datetime.now().isoformat(),
             )
@@ -272,11 +278,13 @@ async def get_portfolio():
 @app.put("/api/v1/portfolio", response_model=PortfolioResponse)
 async def update_portfolio(request: PortfolioRequest):
     try:
-        success = update_portfolio("default", request.holdings)
+        # Convert Pydantic models to dictionaries for service layer
+        holdings_dict = [h.model_dump() for h in request.holdings]
+        success = update_portfolio_service("default", holdings_dict)
         if success:
             return PortfolioResponse(
                 holdings=request.holdings,
-                total_value=sum(h["quantity"] * h.get("avg_cost", 0) for h in request.holdings),
+                total_value=sum(h.quantity * (h.avg_cost or 0) for h in request.holdings),
                 allocation=_calculate_allocation(request.holdings),
                 last_updated=datetime.now().isoformat(),
             )
@@ -289,7 +297,7 @@ async def update_portfolio(request: PortfolioRequest):
 @app.delete("/api/v1/portfolio/{symbol}", response_model=PortfolioResponse)
 async def delete_holding(symbol: str):
     try:
-        success = delete_holding("default", symbol)
+        success = delete_holding_service("default", symbol)
         if success:
             return PortfolioResponse(
                 holdings=[],
@@ -370,15 +378,10 @@ def _calculate_allocation(holdings: list[PortfolioHolding]) -> dict[str, float]:
     if not holdings:
         return {}
     
-    total_value = sum(h["quantity"] * h.get("avg_cost", 0) for h in holdings)
+    total_value = sum(h.quantity * (h.avg_cost or 0) for h in holdings)
     allocation = {}
     
     for holding in holdings:
-        allocation[holding.symbol] = (holding.quantity * holding.avg_cost) / total_value * 100 if total_value > 0 else 0
+        allocation[holding.symbol] = (holding.quantity * (holding.avg_cost or 0)) / total_value * 100 if total_value > 0 else 0
     
     return allocation
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)

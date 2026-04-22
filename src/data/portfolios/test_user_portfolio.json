@@ -2,20 +2,22 @@
   "user_id": "test_user",
   "holdings": [
     {
-      "symbol": "MSFT",
-      "quantity": 5,
-      "avg_cost": 250.0
+      "symbol": "AAPL",
+      "quantity": 10,
+      "avg_cost": 150.0,
+      "current_price": null
     },
     {
-      "symbol": "GOOGL",
-      "quantity": 8,
-      "avg_cost": 120.0
+      "symbol": "MSFT",
+      "quantity": 5,
+      "avg_cost": 250.0,
+      "current_price": null
     }
   ],
-  "total_value": 2210.0,
+  "total_value": 2750.0,
   "allocation": {
-    "MSFT": 56.56108597285068,
-    "GOOGL": 43.43891402714932
+    "AAPL": 54.54545454545454,
+    "MSFT": 45.45454545454545
   },
-  "last_updated": "2026-03-31T21:22:50.959039"
+  "last_updated": "2026-04-22T19:33:03.365452"
 }
