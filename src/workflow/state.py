@@ -8,6 +8,7 @@ class WorkflowState(TypedDict):
     message: str
     agent: str
     reason: str
+    execution_mode: NotRequired[str]  # "fast" or "deep"
     is_greeting: NotRequired[bool]
     routing_confidence: NotRequired[float]
     attempt_count: NotRequired[int]
@@ -15,6 +16,7 @@ class WorkflowState(TypedDict):
     execution_trace: NotRequired[list[dict[str, Any]]]
     critic_status: NotRequired[str]
     critic_reason: NotRequired[str]
+    critic_confidence: NotRequired[float]  # Critic's confidence in its decision
     retry_reason: NotRequired[str]
     fallback_agent: NotRequired[str]
     context: NotRequired[list[dict[str, Any]]]

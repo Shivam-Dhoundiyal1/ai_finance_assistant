@@ -1,6 +1,6 @@
 # AI Finance Assistant - UX & Frontend Guide
 
-> Complete guide to user experience design, component library, accessibility, and frontend development for EU developers.
+> Complete guide to user experience design, component library, accessibility, and frontend development.
 
 ---
 
@@ -894,4 +894,4 @@ describe('MyComponent', () => {
 
 ---
 
-**Last Updated**: April 2026 | **For**: EU Frontend Developers
+**Last Updated**: April 2026 | **For**: Frontend Development

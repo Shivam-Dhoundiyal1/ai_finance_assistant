@@ -450,7 +450,7 @@ Frontend renders visualizations
 - **Response Time**: <2s for RAG queries
 - **Concurrent Users**: 50-100
 
-### For EU Production Scale
+### Production-Scale Architecture
 
 **Horizontal Scaling:**
 ```
@@ -469,7 +469,7 @@ Frontend renders visualizations
                       │ (Read Replicas)
                       ▼
               ┌──────────────┐
-              │ PostgreSQL DB│ (eu-west-1)
+              │ PostgreSQL DB│ (primary region)
               │ Multi-AZ     │
               └──────────────┘
 ```
@@ -500,7 +500,7 @@ docker-compose up
 └── frontend (3000)
 ```
 
-### ECS Cluster (Production AWS eu-west-1)
+### ECS Cluster (Production Deployment)
 ```
 ALB (Application Load Balancer)
 ├── ECS Service: Backend
@@ -603,11 +603,11 @@ Alerts:
 2. **Event-Driven Architecture** - Message queue (RabbitMQ/Kafka) for async processing
 3. **Service Mesh** (Istio) - Better service-to-service communication
 4. **OpenTelemetry** - Distributed tracing across services
-5. **Multi-Region Deployment** - EU (primary) + US (backup)
+5. **Multi-Region Deployment** - Primary + backup regions
 6. **Advanced Caching** - Varnish/Nginx reverse proxy
 7. **ML Pipeline** - Train custom models on user feedback
 8. **GraphQL Subscriptions** - Real-time portfolio updates
 
 ---
 
-**Last Updated**: April 2026 | **For**: EU Remote Developers
+**Last Updated**: April 2026 | **For**: Production Development

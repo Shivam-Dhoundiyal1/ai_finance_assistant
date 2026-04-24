@@ -9,16 +9,39 @@ from src.core.config import get_settings
 from src.rag.knowledge_base import KnowledgeBase
 
 
+# Global cache for embeddings model to avoid repeated loading
+_embedding_model = None
+_vector_store = None
+
+
+def _get_embeddings():
+    """Lazy load and cache embeddings model."""
+    global _embedding_model
+    if _embedding_model is None:
+        kb = KnowledgeBase()
+        _embedding_model = HuggingFaceEmbeddings(model_name=kb.embedding_model)
+    return _embedding_model
+
+
+def _get_vector_store():
+    """Lazy load and cache vector store."""
+    global _vector_store
+    if _vector_store is None:
+        kb = KnowledgeBase()
+        root = Path(__file__).resolve().parents[2]
+        persist_path = kb.resolve_persist_path(root)
+        embeddings = _get_embeddings()
+        _vector_store = Chroma(
+            collection_name=kb.collection_name,
+            persist_directory=str(persist_path),
+            embedding_function=embeddings,
+        )
+    return _vector_store
+
+
 def _build_retriever(top_k: int):
-    kb = KnowledgeBase()
-    root = Path(__file__).resolve().parents[2]
-    persist_path = kb.resolve_persist_path(root)
-    embeddings = HuggingFaceEmbeddings(model_name=kb.embedding_model)
-    vector_store = Chroma(
-        collection_name=kb.collection_name,
-        persist_directory=str(persist_path),
-        embedding_function=embeddings,
-    )
+    """Build retriever with cached components."""
+    vector_store = _get_vector_store()
     return vector_store.as_retriever(search_kwargs={"k": top_k})
 
 

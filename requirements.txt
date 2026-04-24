@@ -1,41 +1,37 @@
-# Finnie - Dependencies
+# AI Finance Assistant - Dependencies
 # Python 3.11+
 
-# App & config
+# Core Framework & API
+fastapi>=0.109
+uvicorn[standard]>=0.27
 pydantic>=2.0
 pydantic-settings>=2.0
-PyYAML>=6.0
 python-dotenv>=1.0
 
-# LLM & chains
+# LangGraph & LangChain Ecosystem
+langgraph>=0.2
 langchain>=0.2
 langchain-core>=0.2
 langchain-community>=0.2
 langchain-openai>=0.1
+langchain-google-genai>=2.0
 langchain-text-splitters>=0.2
 langchain-chroma>=0.1
 
-# Optional: Gemini
-# langchain-google-genai>=2.0
-
-# Vector store & embeddings
+# Vector Database & Embeddings
 chromadb>=0.4
 sentence-transformers>=2.2
 
-# Market data
+# Market Data Integration
 yfinance>=0.2
 
-# API (React frontend talks to this)
-fastapi>=0.109
-uvicorn[standard]>=0.27
-
-# LangGraph for workflow orchestration
-langgraph>=0.2
-
-# Async
+# Async Support
 anyio>=4.0
 
-# Testing
+# Configuration & Utilities
+PyYAML>=6.0
+
+# Development & Testing
 pytest>=7.0
 pytest-asyncio>=0.21
 pytest-cov>=4.0

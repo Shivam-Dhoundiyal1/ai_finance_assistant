@@ -1,4 +1,6 @@
 """LangGraph nodes for the Finnie workflow."""
+import json
+import logging
 import re
 from typing import Any
 
@@ -7,6 +9,9 @@ from src.core.config import get_settings
 from src.rag import retriever
 from src.workflow import intelligent_router
 from src.workflow.state import WorkflowState
+
+
+logger = logging.getLogger(__name__)
 
 
 async def intelligent_route_query(*args, **kwargs):
@@ -80,6 +85,106 @@ def _get_llm():
         )
     # Fallback: no API key
     return None
+
+
+def _get_router_system_prompt() -> str:
+    """System prompt for LLM-based intent classification router."""
+    return """You are an intelligent routing system for a finance AI assistant.
+
+Your job is to classify user queries into EXACTLY ONE of these four categories:
+
+1. "llm" → Greetings, casual chat, general questions, or when unsure. Use for: hello, hi, how are you, what can you help with
+2. "rag" → Finance knowledge questions, definitions, explanations, concepts, and educational topics. Use for: what is inflation, explain diversification, how do stocks work
+3. "data_enrichment" → Real-time market data, stock prices, live trends, and quote requests. Use for: price of Tesla, NIFTY quotes, market data
+4. "portfolio" → User's personal portfolio analysis, allocation, holdings management. Use for: analyze my portfolio, my holdings
+
+CLASSIFICATION RULES:
+- Greeting → "llm"
+- Conceptual finance question → "rag"
+- Real-time market data → "data_enrichment"
+- Personal portfolio query → "portfolio"
+- Ambiguous or unclear → "llm" (safe default)
+
+IMPORTANT:
+- Return ONLY valid JSON
+- No other text or explanation
+- agent must be one of: llm, rag, data_enrichment, portfolio
+- confidence must be between 0.0 and 1.0
+- reason must be a short 1-sentence explanation
+
+OUTPUT FORMAT (JSON ONLY):
+{
+  "agent": "<llm|rag|data_enrichment|portfolio>",
+  "confidence": <0.0-1.0>,
+  "reason": "<1-sentence explanation>"
+}"""
+
+
+async def _classify_intent(message: str) -> tuple[str, float, str]:
+    """
+    Classify user intent using LLM-based routing.
+    
+    Args:
+        message: User's query
+        
+    Returns:
+        (agent, confidence, reason)
+    """
+    # Edge case: empty input
+    if not message or not message.strip():
+        return "llm", 1.0, "Empty input, routing to general chat"
+    
+    # Get LLM for routing
+    llm = _get_llm()
+    if not llm:
+        logger.warning("LLM not configured, defaulting to llm route")
+        return "llm", 0.0, "LLM not configured"
+    
+    try:
+        from langchain_core.messages import HumanMessage, SystemMessage
+        
+        # Prepare messages
+        messages = [
+            SystemMessage(content=_get_router_system_prompt()),
+            HumanMessage(content=message),
+        ]
+        
+        # Call LLM for classification
+        response = await llm.ainvoke(messages)
+        response_text = response.content if hasattr(response, "content") else str(response)
+        
+        # Parse JSON response
+        routing_data = json.loads(response_text.strip())
+        
+        # Extract and validate fields
+        agent = str(routing_data.get("agent", "llm")).strip().lower()
+        confidence = float(routing_data.get("confidence", 0.0))
+        reason = str(routing_data.get("reason", "Routing decision")).strip()
+        
+        # Validate agent is one of the allowed categories
+        if agent not in {"llm", "rag", "data_enrichment", "portfolio"}:
+            logger.warning(f"Invalid agent '{agent}', defaulting to llm")
+            agent = "llm"
+        
+        # Clamp confidence to [0.0, 1.0]
+        confidence = max(0.0, min(1.0, confidence))
+        
+        # Low confidence fallback to llm
+        if confidence < 0.5:
+            logger.info(f"Low confidence ({confidence:.2f}), falling back to llm route")
+            agent = "llm"
+            reason = f"Low confidence fallback ({confidence:.2f})"
+        
+        logger.info(f"Classified intent: agent={agent}, confidence={confidence:.2f}")
+        return agent, confidence, reason
+        
+    except json.JSONDecodeError as e:
+        logger.warning(f"Router JSON parse error: {e}, returning llm default")
+        return "llm", 0.0, "JSON parsing failed, routing to general chat"
+    
+    except Exception as e:
+        logger.error(f"Router classification error: {e}, returning llm default")
+        return "llm", 0.0, f"Routing error ({type(e).__name__})"
 
 
 def _is_goal_planning_query(message: str) -> bool:
@@ -203,21 +308,6 @@ def _is_relevant_response(message: str, response: str) -> bool:
     return len(overlap) >= 2
 
 
-def _is_greeting_message(message: str) -> bool:
-    normalized = re.sub(r"[^a-z\s]", "", (message or "").strip().lower())
-    normalized = re.sub(r"\s+", " ", normalized)
-    greetings = {
-        "hi",
-        "hello",
-        "hey",
-        "good morning",
-        "good evening",
-        "good afternoon",
-        "hello there",
-    }
-    return normalized in greetings
-
-
 def _build_low_confidence_estimate(message: str) -> str | None:
     if not _has_target_and_timeline(message):
         return None
@@ -311,33 +401,43 @@ def _format_sources(context: list[dict[str, Any]]) -> list[str]:
 
 
 async def router_node(state: WorkflowState) -> WorkflowState:
-    """Intelligent routing using LLM-based orchestrator."""
-    if _is_greeting_message(state.get("message", "")):
-        return {
-            **state,
-            "agent": "finance_qa",
-            "reason": "Greeting detected",
-            "routing_confidence": 1.0,
-            "is_greeting": True,
-            "execution_trace": _append_trace(
-                state,
-                "router",
-                "success",
-                "finance_qa",
-            ),
-        }
-
+    """
+    Intelligent routing using LLM-based intent classification.
+    
+    Routes user message to:
+    - "llm": Greetings, general questions
+    - "rag": Finance knowledge/concepts
+    - "data_enrichment": Real-time market data
+    - "portfolio": Portfolio analysis
+    
+    Sets execution_mode:
+    - "fast": llm, data_enrichment (skip critic)
+    - "deep": rag, portfolio (run critic)
+    """
+    message = state.get("message", "").strip()
+    
     try:
-        agent, reason, confidence = await intelligent_route_query(state["message"])
-        fallback_agent = "finance_qa" if agent == "finance_qa" and confidence < 0.5 else ""
-
+        # Classify intent using LLM
+        agent, confidence, reason = await _classify_intent(message)
+        
+        # Determine if this is a greeting (for downstream skipping RAG, etc.)
+        is_greeting = agent == "llm" and "greeting" in reason.lower()
+        
+        # Set execution mode based on agent type
+        if agent in ["llm", "data_enrichment"]:
+            execution_mode = "fast"  # Skip critic for simple queries
+        elif agent in ["rag", "portfolio"]:
+            execution_mode = "deep"  # Run critic for complex answers
+        else:
+            execution_mode = "fast"  # Default to fast mode
+        
         return {
             **state,
             "agent": agent,
             "reason": reason,
+            "execution_mode": execution_mode,
             "routing_confidence": confidence,
-            "fallback_agent": fallback_agent,
-            "is_greeting": False,
+            "is_greeting": is_greeting,
             "execution_trace": _append_trace(
                 state,
                 "router",
@@ -346,20 +446,21 @@ async def router_node(state: WorkflowState) -> WorkflowState:
             ),
         }
     except Exception as exc:
-        # Generic fallback
+        # Fallback to llm route on any error
+        logger.error(f"Router node error: {exc}")
         return {
             **state,
-            "agent": "finance_qa",
-            "reason": "General financial education",
+            "agent": "llm",
+            "reason": "Router error, defaulting to general chat",
+            "execution_mode": "fast",  # Safe default
             "routing_confidence": 0.0,
-            "fallback_agent": "finance_qa",
             "is_greeting": False,
             "error": str(exc),
             "execution_trace": _append_trace(
                 state,
                 "router",
                 "failure",
-                "finance_qa",
+                "llm",
             ),
         }
 
@@ -592,92 +693,165 @@ async def llm_node(state: WorkflowState) -> WorkflowState:
 
 
 async def critic_node(state: WorkflowState) -> WorkflowState:
-    """Evaluate the generated response and decide whether it is acceptable."""
+    """Evaluate the generated response and decide whether it is acceptable.
+    
+    Intent-aware critic that adapts based on query type and execution mode.
+    """
     response = (state.get("response") or "").strip()
     message = (state.get("message") or "").strip()
+    agent = state.get("agent", "")
+    execution_mode = state.get("execution_mode", "fast")
 
-    failure_phrases = [
+    # Initialize with pass status
+    status = "pass"
+    reason = "response accepted"
+    confidence = 0.8  # Default confidence
+
+    # Critical failures that always fail
+    critical_failures = [
         "i encountered an error",
-        "technical difficulties",
+        "technical difficulties", 
         "please try rephrasing",
         "specialized agent is temporarily unavailable",
         "demo mode",
     ]
 
-    status = "pass"
-    reason = "response accepted"
-
+    # 1. Check for critical failures
     if not response:
         status = "fail"
         reason = "empty response"
-    elif state.get("is_greeting") and len(response) > 120:
-        status = "fail"
-        reason = "Greeting should not trigger long response"
-    elif len(response) < 40 and not state.get("is_greeting"):
-        status = "fail"
-        reason = "response too short"
-    elif any(phrase in response.lower() for phrase in failure_phrases):
+        confidence = 0.9
+    elif any(phrase in response.lower() for phrase in critical_failures):
         status = "fail"
         reason = "response contains fallback or error language"
-    elif _is_generic_response(response):
-        status = "fail"
-        reason = "response is too generic"
-    elif not _is_relevant_response(message, response):
-        status = "fail"
-        reason = "response is irrelevant to the user query"
-    elif _requires_numeric_planning(message, response):
-        status = "fail"
-        reason = "Missing numeric financial planning"
-    elif _missing_personalization(message, response):
-        status = "fail"
-        reason = "missing personalization using user's numbers"
-    elif _missing_context_structure(message, response):
-        status = "fail"
-        reason = "contextual query missing risk/opportunity/actionable structure"
-    else:
-        llm = _get_llm()
-        if llm:
-            context_preview = _format_context(state.get("context", []))[:1200]
-            critic_prompt = f"""
-Review the assistant response for quality.
+        confidence = 0.9
+    
+    # 2. Agent-specific checks
+    elif agent == "llm" and state.get("is_greeting"):
+        # Be very lenient with greetings
+        if len(response) > 200:  # Only fail if extremely long
+            status = "fail"
+            reason = "greeting response too long"
+            confidence = 0.7
+        else:
+            status = "pass"
+            reason = "greeting response acceptable"
+            confidence = 0.9  # High confidence for greetings
+    
+    elif agent == "data_enrichment":
+        # For market data, check if response contains relevant information
+        if not _is_relevant_response(message, response):
+            status = "fail"
+            reason = "market data response irrelevant to query"
+            confidence = 0.7
+        elif len(response) < 20:
+            status = "fail" 
+            reason = "market data response too short"
+            confidence = 0.6
+        else:
+            status = "pass"
+            reason = "market data response acceptable"
+            confidence = 0.8
+    
+    elif agent in ["rag", "portfolio"]:
+        # Stricter checks for knowledge and portfolio queries
+        if len(response) < 30:
+            status = "fail"
+            reason = "knowledge response too short"
+            confidence = 0.7
+        elif not _is_relevant_response(message, response):
+            status = "fail"
+            reason = "knowledge response irrelevant to query"
+            confidence = 0.8
+        elif _is_generic_response(response):
+            status = "fail"
+            reason = "knowledge response too generic"
+            confidence = 0.6
+        elif _requires_numeric_planning(message, response):
+            status = "fail"
+            reason = "missing numeric financial planning"
+            confidence = 0.8
+        elif _missing_personalization(message, response):
+            status = "fail"
+            reason = "missing personalization using user's numbers"
+            confidence = 0.6
+        elif _missing_context_structure(message, response):
+            status = "fail"
+            reason = "contextual query missing risk/opportunity/actionable structure"
+            confidence = 0.7
+        else:
+            # Use LLM for nuanced evaluation
+            llm = _get_llm()
+            if llm:
+                context_preview = _format_context(state.get("context", []))[:1200]
+                critic_prompt = f"""
+Evaluate the assistant response quality for a {agent} query.
 
 User question: {state['message']}
-Agent: {state.get('agent', '')}
+Agent: {agent}
 Context: {context_preview}
 Response: {response}
 
-Strict checks:
-- Fail if irrelevant to query.
-- Fail if greeting receives long response.
-- Fail if numeric goal lacks calculation.
-- Fail if context query ignores risk/opportunity/actionable framing.
-- Fail if response is generic.
+Evaluation criteria:
+- Is the answer relevant to the query?
+- Is it factually grounded in the context (if provided)?
+- Is it complete enough for the user's needs?
+- Does it avoid being overly generic?
+
+Be lenient for:
+- Short but correct answers
+- Conversational responses
+- Answers that address the core question
 
 Reply with exactly one line in this format:
-PASS|short reason
+PASS|confidence(0.0-1.0)|reason
 or
-FAIL|short reason
-"""
-            try:
-                from langchain_core.messages import HumanMessage
+FAIL|confidence(0.0-1.0)|reason
 
-                result = await llm.ainvoke(HumanMessage(content=critic_prompt))
-                critic_text = result.content if hasattr(result, "content") else str(result)
-                parts = critic_text.strip().split("|", 1)
-                if len(parts) == 2 and parts[0].strip().upper() in {"PASS", "FAIL"}:
-                    status = parts[0].strip().lower()
-                    reason = parts[1].strip() or reason
-            except Exception:
-                pass
+Example: PASS|0.8|Answer is relevant and complete
+Example: FAIL|0.7|Answer is too generic
+"""
+                try:
+                    from langchain_core.messages import HumanMessage
+                    result = await llm.ainvoke(HumanMessage(content=critic_prompt))
+                    critic_text = result.content if hasattr(result, "content") else str(result)
+                    parts = critic_text.strip().split("|", 2)
+                    
+                    if len(parts) >= 3 and parts[0].strip().upper() in {"PASS", "FAIL"}:
+                        status = parts[0].strip().lower()
+                        try:
+                            confidence = float(parts[1].strip())
+                            confidence = max(0.0, min(1.0, confidence))  # Clamp to [0,1]
+                        except:
+                            confidence = 0.6  # Default if parsing fails
+                        reason = parts[2].strip() or reason
+                except Exception:
+                    pass  # Keep default values
+    
+    else:
+        # Default handling for other agents
+        status = "pass"
+        reason = "response acceptable for agent type"
+        confidence = 0.7
+
+    # Apply confidence-based adjustments
+    if status == "fail" and confidence < 0.6:
+        # Low confidence failures become passes (uncertain critic)
+        status = "pass"
+        reason = f"uncertain critic ({confidence:.1f}), accepting response"
+        confidence = 0.5
 
     next_state = {
         **state,
         "critic_status": status,
         "critic_reason": reason,
-        "execution_trace": _append_trace(state, "critic", "success", state.get("agent", "")),
+        "critic_confidence": confidence,
+        "execution_trace": _append_trace(state, "critic", "success", agent),
     }
+    
     if status == "fail":
         next_state["retry_reason"] = reason
+    
     return next_state
 
 

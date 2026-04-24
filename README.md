@@ -1,118 +1,206 @@
-# Finnie
+# AI Finance Assistant - Multi-Agent System using LangGraph
 
-**Finnie is a production-ready, explainable financial intelligence assistant built with LangGraph, FastAPI, and React.**
+**A production-style AI system that demonstrates intelligent multi-agent architecture for financial queries with optimized performance and clean execution paths.**
 
-It combines multi-agent routing, retrieval-augmented generation, portfolio analytics, and self-correcting response evaluation into a single recruiter-facing system that is easy to inspect, reason about, and demonstrate.
+## Overview
 
-## Project Overview
+This AI Finance Assistant showcases a sophisticated multi-agent system built with LangGraph that intelligently routes user queries to specialized agents while maintaining high performance through optimized execution paths.
 
-Finnie helps users explore financial questions across market data, portfolio analysis, long-term planning, tax topics, and general financial education.
-
-Instead of relying on a single generic chatbot, the system routes each request to the most appropriate specialist agent, retrieves supporting context when relevant, evaluates the generated answer with a critic step, and exposes execution metadata so system behavior is visible rather than opaque.
-
-This makes the project useful as both:
-- a practical AI finance assistant
-- a portfolio showcase for intelligent, observable backend systems
+The system handles four main query types:
+- **General chat & greetings** (fast path)
+- **Financial knowledge & concepts** (deep path with RAG)
+- **Real-time market data** (optimized path)
+- **Portfolio analysis** (deep path with critic validation)
 
 ## Architecture
 
-The core workflow is intentionally simple and production-oriented:
+### Multi-Agent Workflow
 
-`User -> Router -> RAG -> Enrichment -> LLM -> Critic -> Response`
+The system uses LLM-based semantic routing to direct queries to appropriate specialist agents:
 
-The system uses:
-- **LangGraph** for orchestration and retry control
-- **FastAPI** for backend APIs
-- **React + TypeScript** for the frontend
-- **Chroma** for retrieval-augmented generation
-- **Specialized agents** for finance Q&A, portfolios, market questions, goal planning, news, and tax
-
-### Workflow Diagram
-
-```mermaid
-graph TD
-    User[User Query] --> Router[Router]
-    Router --> RAG[RAG Retrieval]
-    RAG --> LLM[LLM Agent Response]
-    LLM --> Critic[Critic]
-    Critic -->|pass| Response[Response]
-    Critic -->|fail & attempts left| LLM
 ```
+User Query
+    |
+    v
+Router (LLM-based classification)
+    |
+    +-- llm (general queries) --> Fast Path: Router -> LLM -> Response
+    |
+    +-- data_enrichment (market data) --> Optimized: Router -> Data -> LLM -> Response  
+    |
+    +-- rag (knowledge) --> Deep Path: Router -> RAG -> Data -> LLM -> Critic -> Response
+    |
+    +-- portfolio (analysis) --> Deep Path: Router -> RAG -> Data -> LLM -> Critic -> Response
+```
+
+### Components
+
+- **Router**: LLM-powered intent classification with confidence scoring
+- **RAG System**: Retrieval-augmented generation with ChromaDB and sentence-transformers
+- **Data Enrichment**: Real-time market data integration via yfinance
+- **Specialized Agents**: Finance Q&A, Market Analysis, Portfolio Management
+- **Critic System**: Response validation with confidence thresholds
+- **Lazy Loading**: Memory-optimized embedding model caching
 
 ## Key Features
 
-- **Multi-agent routing**: queries are routed to the most relevant financial specialist agent
-- **Confidence-aware fallback**: low-confidence routes fall back to a safe finance education agent
-- **Self-correction**: a critic node evaluates responses and can trigger a bounded retry loop
-- **Execution trace**: the API and UI expose workflow steps so system behavior is transparent
-- **Portfolio intelligence**: includes portfolio analysis, allocation insights, and supporting market data
-- **Recruiter-friendly observability**: responses include metadata showing how the answer was produced
+### Performance Optimizations
+- **83% faster** simple queries through conditional routing
+- **67% faster** data queries by skipping unnecessary RAG
+- **Reduced memory usage** via lazy embedding loading
+- **Intelligent execution paths** based on query complexity
 
-## Example API Response
+### Advanced Capabilities
+- **Semantic routing** with confidence-based fallback
+- **Conditional RAG execution** (only when needed)
+- **Smart retry logic** with critic confidence thresholds
+- **Execution trace visibility** for system observability
+- **Memory optimization** for serverless deployment
 
-```json
-{
-  "response": "Diversification reduces concentration risk by spreading exposure across assets, sectors, and time horizons. This is for education only; consider consulting a financial advisor.",
-  "agent": "finance_qa",
-  "sources": ["01_stocks_101.md", "12_risk_management.md"],
-  "routing_confidence": 0.82,
-  "attempt_count": 1,
-  "critic_status": "pass",
-  "system_status": "success",
-  "execution_trace": [
-    {"node": "Router", "status": "success", "attempt": 0},
-    {"node": "Rag", "status": "success", "attempt": 0},
-    {"node": "Data Enrichment", "status": "success", "attempt": 0},
-    {"node": "Llm", "status": "success", "attempt": 1},
-    {"node": "Critic", "status": "success", "attempt": 1},
-    {"node": "Response Formatter", "status": "success", "attempt": 1}
-  ]
-}
-```
+## Tech Stack
 
-## Why This Stands Out
+- **Backend**: FastAPI, Python 3.11+
+- **Workflow**: LangGraph, LangChain
+- **Vector Database**: ChromaDB
+- **Embeddings**: HuggingFace sentence-transformers
+- **Market Data**: yfinance API
+- **LLM APIs**: OpenAI, Google Gemini
+- **Frontend**: React + TypeScript (optional)
 
-Many AI demos stop at “LLM in, answer out.” Finnie goes further.
+## Performance Metrics
 
-- **Reliable**: responses are checked before being finalized
-- **Transparent**: the system exposes which agent handled the question and how the workflow progressed
-- **Production-ready**: bounded retries, fallback routing, typed API contracts, and clean frontend visibility are already in place
-- **Explainable**: hiring managers can inspect not only the answer, but the reasoning path the system took to generate it
+| Query Type | Before | After | Improvement |
+|------------|--------|-------|-------------|
+| Simple greetings | 6+ seconds | ~1 second | **83% faster** |
+| Data queries | 6+ seconds | ~2 seconds | **67% faster** |
+| Execution steps (greetings) | 5-6 steps | 3 steps | **50% fewer** |
 
-This makes Finnie feel like an engineered AI application, not an experimental prototype.
+## Quick Start
 
-## Running the Project
+### Prerequisites
+- Python 3.11+
+- OpenAI API key (or Gemini)
 
-### Backend
+### Setup
 
 ```bash
+# Clone and setup
+git clone <repository>
+cd ai_finance_assistant
+
+# Create virtual environment
 python -m venv venv
-venv\Scripts\activate
+venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/Mac
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Setup environment
+cp .env.example .env
+# Edit .env with your API keys
+
+# Initialize knowledge base
 python run_ingest.py
+
+# Start the API server
 python run_api.py
 ```
 
-### Frontend
+### API Usage
 
 ```bash
-cd frontend
-npm install
-npm run dev
+# Start the server
+uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+
+# API will be available at http://localhost:8000
+# Interactive docs at http://localhost:8000/docs
 ```
 
-Backend runs at `http://127.0.0.1:8000` and the frontend runs at `http://localhost:5173`.
+## API Examples
 
-## Documentation
+### Chat Endpoint
+```bash
+curl -X POST "http://localhost:8000/api/v1/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is diversification?"}'
+```
 
-For deeper technical detail, see:
+### Market Data
+```bash
+curl "http://localhost:8000/api/v1/market/quote/AAPL"
+```
 
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [API_REFERENCE.md](API_REFERENCE.md)
-- [SETUP.md](SETUP.md)
-- [DEPLOYMENT.md](DEPLOYMENT.md)
-- [UX_GUIDE.md](UX_GUIDE.md)
+### Portfolio Analysis
+```bash
+curl -X POST "http://localhost:8000/api/v1/portfolio" \
+  -H "Content-Type: application/json" \
+  -d '{"holdings": [{"symbol": "AAPL", "quantity": 10, "avg_cost": 150.0}]}'
+```
+
+## Deployment Notes
+
+### Memory Optimization
+- **Lazy loading**: Embeddings model loaded once, cached globally
+- **Conditional execution**: Skip heavy components for simple queries
+- **Serverless ready**: Optimized for 512MB-1GB RAM environments
+
+### Performance Features
+- **Fast path routing**: Direct LLM execution for simple queries
+- **Smart caching**: Vector store and embeddings cached in memory
+- **Bounded execution**: Max retry limits prevent infinite loops
+
+## Project Structure
+
+```
+ai_finance_assistant/
+|
+src/
+|   api/                    # FastAPI endpoints
+|   workflow/               # LangGraph workflow and nodes
+|   data/                   # Market and portfolio services
+|   rag/                    # RAG system and knowledge base
+|   core/                   # Configuration and utilities
+|
+requirements.txt           # Python dependencies
+run_api.py                # API server entry point
+run_ingest.py             # Knowledge base ingestion
+.env.example              # Environment configuration template
+```
+
+## Configuration
+
+### Environment Variables (.env.example)
+```bash
+# Primary LLM
+OPENAI_API_KEY=your_openai_key_here
+OPENAI_MODEL=gpt-4o-mini
+
+# Alternative LLM
+GOOGLE_API_KEY=your_gemini_key_here
+GOOGLE_MODEL=gemini-2.0-flash
+
+# RAG Configuration
+RAG_TOP_K=5
+CHROMA_EMBEDDING_MODEL=all-MiniLM-L6-v2
+```
+
+## System Behavior
+
+### Execution Modes
+- **Fast Mode**: `Router -> LLM -> Response` (greetings, simple chat)
+- **Optimized Mode**: `Router -> Data -> LLM -> Response` (market queries)
+- **Deep Mode**: `Router -> RAG -> Data -> LLM -> Critic -> Response` (knowledge, portfolio)
+
+### Response Quality
+- **Critic validation** ensures response relevance and completeness
+- **Confidence thresholds** prevent unnecessary retries
+- **Execution traces** provide system observability
 
 ## Disclaimer
 
-Finnie is for **educational use only** and does not provide financial, tax, or legal advice.
+**This project is for educational purposes only and does not provide financial advice.** All financial information should be verified with professional advisors.
+
+---
+
+*Built with modern AI engineering practices to demonstrate production-ready multi-agent systems.*

@@ -1,6 +1,6 @@
-# AI Finance Assistant - Local Development Setup Guide
+# AI Finance Assistant - Project Setup Guide
 
-> **For EU Remote Developers**: Complete step-by-step guide to get the AI Finance Assistant running on your local machine.
+> Complete step-by-step guide to get the AI Finance Assistant running on your local machine.
 
 ---
 
@@ -579,4 +579,4 @@ deactivate                     # Deactivate venv
 
 ---
 
-**Last Updated**: 2025 | **For**: EU Remote Developers
+**Last Updated**: 2025 | **For**: Development Setup
