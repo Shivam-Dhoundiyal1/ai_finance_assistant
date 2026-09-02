@@ -16,6 +16,8 @@ if str(ROOT) not in sys.path:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+import os
+
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -44,9 +46,18 @@ app = FastAPI(
     description="REST API for chat, market quotes, and portfolio.",
 )
 
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,https://finance-ai-prod-494916.web.app",
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
