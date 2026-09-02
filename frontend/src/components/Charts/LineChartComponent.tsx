@@ -10,10 +10,16 @@ interface LineChartProps {
   holdings: HoldingData[]
 }
 
-// Generate mock historical data (30 days)
-function generateMockHistory(holdings: HoldingData[]) {
+// 1. Define the shape of each chart point
+interface ChartPoint {
+  date: string
+  value: number
+}
+
+// 2. Explicitly type the return value of generateMockHistory
+function generateMockHistory(holdings: HoldingData[]): ChartPoint[] {
   const currentTotal = holdings.reduce((sum, h) => sum + (h.quantity * h.currentPrice), 0)
-  const data = []
+  const data: ChartPoint[] = []
   
   for (let i = 29; i >= 0; i--) {
     const daysAgo = i
@@ -36,7 +42,7 @@ function generateMockHistory(holdings: HoldingData[]) {
 }
 
 export default function LineChartComponent({ holdings }: LineChartProps) {
-  const chartData = generateMockHistory(holdings)
+  const chartData: ChartPoint[] = generateMockHistory(holdings)
 
   if (holdings.length === 0) {
     return (
@@ -49,7 +55,7 @@ export default function LineChartComponent({ holdings }: LineChartProps) {
   const currentValue = chartData[chartData.length - 1]?.value || 0
   const previousValue = chartData[0]?.value || 0
   const change = currentValue - previousValue
-  const changePercent = (change / previousValue) * 100
+  const changePercent = previousValue !== 0 ? (change / previousValue) * 100 : 0
 
   return (
     <div className="w-full h-96 bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700">
