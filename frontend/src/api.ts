@@ -1,6 +1,8 @@
 import axios from 'axios'
 
-const API_BASE = '/api/v1'
+// Default to the Vite dev proxy so the app behaves like it did before Firebase hosting.
+// If needed in a non-local deployment, set VITE_API_BASE_URL to the backend base URL.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
 
 export type ChatResponse = {
   response: string;
