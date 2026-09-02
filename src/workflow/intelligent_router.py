@@ -4,11 +4,61 @@ from typing import Any, Dict, List, Tuple
 from src.core.config import get_settings
 
 
+def _is_greeting(message: str) -> bool:
+    """True for short greeting messages that should stay in general chat."""
+    text = (message or "").strip().lower()
+    if not text:
+        return False
+    greetings = [
+        "hi",
+        "hello",
+        "hey",
+        "hi there",
+        "hello there",
+        "good morning",
+        "good afternoon",
+        "good evening",
+    ]
+    return text in greetings or text.startswith(tuple(g for g in greetings if " " not in g))
+
+
+def _is_obvious_quote_request(message: str) -> bool:
+    """Return True when a message is clearly asking for a stock quote with no need for LLM routing."""
+    text = (message or "").lower()
+    quote_terms = [
+        "quote",
+        "stock price",
+        "share price",
+        "ticker",
+        "symbol",
+        "market price",
+        "current price",
+        "trading at",
+        "latest price",
+        "stock quote",
+    ]
+    symbols = [
+        "aapl", "apple",
+        "msft", "microsoft",
+        "tsla", "tesla",
+        "nvda", "nvidia",
+        "googl", "google",
+        "amzn", "amazon",
+        "meta",
+        "nflx", "netflix",
+        "amd",
+        "intel",
+    ]
+    if any(term in text for term in quote_terms):
+        return True
+    return any(symbol in text for symbol in symbols)
+
+
 def _keyword_route(message: str) -> Tuple[str, str, float]:
     """Deterministic fallback routing for test and no-LLM environments."""
     text = message.lower()
 
-    if any(keyword in text for keyword in ["quote", "stock price", "ticker", "symbol", "market", "aapl", "tsla", "nvda"]):
+    if _is_obvious_quote_request(text):
         return "market", "Keyword-based market routing", 0.6
     if any(keyword in text for keyword in ["portfolio", "allocation", "rebalance", "holdings"]):
         return "portfolio", "Keyword-based portfolio routing", 0.6
@@ -98,6 +148,11 @@ async def intelligent_route_query(
     Returns:
         tuple: (agent_name, reason, confidence_score)
     """
+    if _is_greeting(message):
+        return "llm", "Greeting detected; route to friendly general chat", 1.0
+    if _is_obvious_quote_request(message):
+        return "market", "Direct market route: clear stock quote request detected", 0.9
+
     routing_prompt = f"""
 You are an intelligent financial assistant router. Analyze the user query and route it to the most appropriate agent.
 

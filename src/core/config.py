@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 
     # Market
     alpha_vantage_api_key: str | None = None
+    tavily_api_key: str | None = None
     market_provider: str = "yfinance"
     market_cache_ttl: int = 300
 
@@ -90,6 +91,8 @@ def get_settings() -> Settings:
             kwargs["openai_api_key"] = cfg["llm"]["openai_api_key"]
         if "gemini_api_key" in cfg.get("llm", {}):
             kwargs["gemini_api_key"] = cfg["llm"]["gemini_api_key"]
-            
+        if "tavily_api_key" in cfg.get("market", {}):
+            kwargs["tavily_api_key"] = cfg["market"]["tavily_api_key"]
+
         _settings = Settings(**kwargs)
     return _settings

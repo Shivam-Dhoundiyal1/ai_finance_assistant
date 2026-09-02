@@ -1,10 +1,10 @@
 """LangGraph nodes for the Finnie workflow."""
+import gc
 import json
 import logging
 import re
 from typing import Any
 
-from src.agents import finance_qa, goal_planning, market, news, portfolio, tax
 from src.core.config import get_settings
 from src.rag import retriever
 from src.workflow import intelligent_router
@@ -289,14 +289,54 @@ def _missing_context_structure(message: str, response: str) -> bool:
     return not (has_risk and has_opportunity and has_action)
 
 
+def _is_greeting(message: str) -> bool:
+    """True for short greetings that should bypass clarifying finance-planning prompts."""
+    msg = (message or "").strip().lower()
+    if not msg:
+        return False
+    greetings = [
+        "hi",
+        "hello",
+        "hey",
+        "hi there",
+        "hello there",
+        "good morning",
+        "good afternoon",
+        "good evening",
+    ]
+    return msg in greetings or msg.startswith(tuple(g for g in greetings if " " not in g))
+
+
 def _is_ambiguous_query(message: str) -> bool:
     msg = (message or "").strip().lower()
+    if _is_greeting(msg):
+        return False
     if len(msg) < 8:
         return True
     vague_terms = ["help me", "what should i do", "advice", "suggest", "plan"]
     has_vague = any(t in msg for t in vague_terms)
     lacks_detail = len(_extract_numeric_tokens(msg)) == 0 and not _is_context_query(msg)
     return has_vague and lacks_detail
+
+
+def _is_obvious_quote_request(message: str) -> bool:
+    """True for direct stock-symbol / quote requests that should use market data immediately."""
+    msg = (message or "").lower()
+    quote_terms = [
+        "stock price",
+        "share price",
+        "quote",
+        "ticker",
+        "symbol",
+        "trading at",
+        "trading today",
+        "market price",
+        "current price",
+        "last price",
+        "stock quote",
+    ]
+    symbol_pattern = r"\b(?:aapl|msft|googl|meta|amzn|nvda|tsla|nflx|amd|intel|apple|tesla|microsoft|google|amazon|nvidia|meta|netflix)\b"
+    return any(term in msg for term in quote_terms) or bool(re.search(symbol_pattern, msg))
 
 
 def _is_relevant_response(message: str, response: str) -> bool:
@@ -415,14 +455,47 @@ async def router_node(state: WorkflowState) -> WorkflowState:
     - "deep": rag, portfolio (run critic)
     """
     message = state.get("message", "").strip()
+
+    if _is_greeting(message):
+        return {
+            **state,
+            "agent": "llm",
+            "reason": "Greeting detected; route to friendly general chat",
+            "execution_mode": "fast",
+            "routing_confidence": 1.0,
+            "is_greeting": True,
+            "execution_trace": _append_trace(
+                state,
+                "router",
+                "success",
+                "llm",
+            ),
+        }
+
+    # Fast path for clear stock-price/quote requests to avoid unnecessary LLM routing.
+    if _is_obvious_quote_request(message):
+        return {
+            **state,
+            "agent": "data_enrichment",
+            "reason": "Direct market-route: clear stock quote request detected",
+            "execution_mode": "fast",
+            "routing_confidence": 0.9,
+            "is_greeting": False,
+            "execution_trace": _append_trace(
+                state,
+                "router",
+                "success",
+                "data_enrichment",
+            ),
+        }
     
     try:
-        # Classify intent using LLM
-        agent, confidence, reason = await _classify_intent(message)
-        
+        # Delegate to the centralized router so the short-circuit quote logic is used consistently.
+        agent, reason, confidence = await intelligent_route_query(message)
+
         # Determine if this is a greeting (for downstream skipping RAG, etc.)
         is_greeting = agent == "llm" and "greeting" in reason.lower()
-        
+
         # Set execution mode based on agent type
         if agent in ["llm", "data_enrichment"]:
             execution_mode = "fast"  # Skip critic for simple queries
@@ -430,7 +503,7 @@ async def router_node(state: WorkflowState) -> WorkflowState:
             execution_mode = "deep"  # Run critic for complex answers
         else:
             execution_mode = "fast"  # Default to fast mode
-        
+
         return {
             **state,
             "agent": agent,
@@ -483,7 +556,9 @@ async def rag_node(state: WorkflowState) -> WorkflowState:
     except Exception:
         context = []
         trace = _append_trace(state, "rag", "failure")
-    
+    finally:
+        gc.collect()
+
     return {
         **state,
         "context": context,
@@ -502,17 +577,29 @@ async def data_enrichment_node(state: WorkflowState) -> WorkflowState:
 
     market_data = None
     portfolio_data = None
-    
-    # Get market data for market agent
-    if state["agent"] == "market":
+    agent_name = state.get("agent")
+
+    # Get market data for market or data-enrichment routes.
+    if agent_name in {"market", "data_enrichment"}:
         try:
             from src.data.market_service import get_quote_for_message
             market_data = get_quote_for_message(state["message"])
+            if not market_data or all(
+                isinstance(item, dict) and item.get("error")
+                for item in market_data
+            ):
+                market_data = (
+                    "Live market data unavailable: the market-data tool did not return a valid quote. "
+                    "Do not provide a current stock price without successful live-data retrieval."
+                )
         except Exception:
-            pass
-    
+            market_data = (
+                "Live market data unavailable: the market-data tool failed. "
+                "Do not provide a current stock price without successful live-data retrieval."
+            )
+
     # Get portfolio data for portfolio agent
-    if state["agent"] == "portfolio":
+    if agent_name == "portfolio":
         try:
             from src.data.portfolio_service import get_user_portfolio
             portfolio_data = get_user_portfolio("default")
@@ -581,26 +668,37 @@ async def llm_node(state: WorkflowState) -> WorkflowState:
     try:
         # Get agent by name
         agent_name = state["agent"]
+        if agent_name == "data_enrichment":
+            agent_name = "market"
 
         if agent_name == "finance_qa":
+            from src.agents.finance_qa import FinanceQAAgent
             agent = FinanceQAAgent()
         elif agent_name == "market":
+            from src.agents.market import MarketAgent
             agent = MarketAgent()
         elif agent_name == "portfolio":
+            from src.agents.portfolio import PortfolioAnalysisAgent
             agent = PortfolioAnalysisAgent()
         elif agent_name == "goal_planning":
+            from src.agents.goal_planning import GoalPlanningAgent
             agent = GoalPlanningAgent()
         elif agent_name == "news":
+            from src.agents.news import NewsSynthesizerAgent
             agent = NewsSynthesizerAgent()
         elif agent_name == "tax":
+            from src.agents.tax import TaxEducationAgent
             agent = TaxEducationAgent()
         else:
             # Fallback to finance_qa
+            from src.agents.finance_qa import FinanceQAAgent
             agent = FinanceQAAgent()
 
-        # Prepare additional data for agent
+        # Prepare additional data for agent.
+        # The chat workflow can use the legacy `data_enrichment` label even though the
+        # specialized agent is `market`, so we must pass market data for both names.
         additional_data = {}
-        if state["agent"] == "market" and state.get("market_data"):
+        if (state.get("agent") in {"market", "data_enrichment"} and state.get("market_data")):
             additional_data["market_data"] = state["market_data"]
         elif state["agent"] == "portfolio" and state.get("portfolio_data"):
             additional_data["portfolio_data"] = state["portfolio_data"]
@@ -651,7 +749,8 @@ async def llm_node(state: WorkflowState) -> WorkflowState:
             context=state.get("context"),
             additional_data=additional_data if additional_data else None
         )
-        
+        gc.collect()
+
         return {
             **state,
             "attempt_count": attempt_count,
@@ -677,6 +776,7 @@ async def llm_node(state: WorkflowState) -> WorkflowState:
         error_type = _classify_error(e)
         fallback_response = error_responses.get(error_type, error_responses["general_error"])
         
+        gc.collect()
         return {
             **state,
             "attempt_count": attempt_count,

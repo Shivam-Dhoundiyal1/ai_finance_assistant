@@ -61,25 +61,38 @@ class BaseAgent(ABC):
         Generate response using the agent's LLM with context and additional data.
         Falls back to demo mode if LLM is not configured.
         """
+        if self.name == "market":
+            market_data = (additional_data or {}).get("market_data") if additional_data else None
+            if not market_data or isinstance(market_data, str) and (
+                "Live market data unavailable" in market_data
+                or "did not return a valid quote" in market_data
+                or "Data unavailable" in market_data
+                or "No symbols found" in market_data
+            ):
+                return (
+                    "I can’t provide a current real-time stock price for this request because the market-data tool did not return a valid live quote. "
+                    "I should not guess or invent a price. If you want, I can explain the stock-price concept, the market data format, or how to fetch the live value from a data source."
+                )
+
         if not self.llm:
             # Demo/fallback responses when no LLM is configured
             return self._generate_demo_response(message, context, additional_data)
-        
+
         # Build context-aware prompt
         context_text = self._format_context(context) if context else "No specific context available."
-        
+
         user_content = f"""
 User question: {message}
 
 Relevant context: {context_text}
 """
-        
+
         # Add agent-specific additional data
         if additional_data:
             for key, value in additional_data.items():
                 if value:
                     user_content += f"\n{key.replace('_', ' ').title()}: {value}"
-        
+
         user_content += "\n\nProvide a helpful, educational response based on the above information."
         
         try:

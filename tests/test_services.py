@@ -61,6 +61,30 @@ class TestMarketService:
             
             # Should have data both times
             assert result1["price"] == result2["price"]
+
+    def test_get_quote_uses_tavily_fallback(self):
+        """Test that Tavily web search is used when market APIs fail."""
+        from src.data.market_service import get_real_time_quote, market_cache
+
+        get_real_time_quote.cache_clear()
+        market_cache.clear()
+
+        with patch("src.data.market_service.get_quote") as mock_get_quote, \
+             patch("src.data.market_service.requests.post") as mock_requests_post, \
+             patch("src.data.market_service.get_settings") as mock_settings:
+            mock_get_quote.return_value = {"symbol": "AAPL", "error": "No data found"}
+            mock_settings.return_value = MagicMock(alpha_vantage_api_key=None, tavily_api_key="test-key")
+            mock_requests_post.return_value.status_code = 200
+            mock_requests_post.return_value.json.return_value = {
+                "answer": "Apple Inc (AAPL) current price is $214.56, down 0.29%.",
+                "results": []
+            }
+
+            result = get_real_time_quote("AAPL")
+
+            assert result["symbol"] == "AAPL"
+            assert result["price"] == 214.56
+            assert result["source"] == "tavily"
     
     def test_extract_symbols(self):
         """Test symbol extraction from messages."""
@@ -68,6 +92,14 @@ class TestMarketService:
         
         symbols = extract_symbols("What is the price of AAPL and MSFT?")
         assert "AAPL" in symbols or "MSFT" in symbols
+
+        symbols = extract_symbols("AAPL stock price")
+        assert symbols == ["AAPL"]
+
+        symbols = extract_symbols("What is Apple's (AAPL) current stock price?")
+        assert "AAPL" in symbols
+        assert "APPLE" not in symbols
+        assert "S" not in symbols
         
         symbols = extract_symbols("Buy $TSLA and $GOOGL")
         assert len(symbols) >= 0  # May or may not find them

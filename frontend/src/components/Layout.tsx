@@ -1,51 +1,9 @@
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Moon, Sun, Menu, TrendingUp, MessageSquare, PieChart, BarChart3 } from 'lucide-react'
+import { Menu, TrendingUp, MessageSquare, PieChart, BarChart3 } from 'lucide-react'
 
 export default function Layout({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-
-  // Load theme from localStorage on component mount
-  useEffect(() => {
-    const saved = localStorage.getItem('theme') as 'light' | 'dark' | null
-    const initialTheme = saved === 'dark' || saved === 'light' ? saved : 'light'
-    
-    if (initialTheme !== theme) {
-      setTheme(initialTheme)
-    }
-    
-    // Apply theme to DOM
-    const root = document.documentElement
-    if (initialTheme === 'dark') {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
-  }, [])
-
-  // Update theme when state changes
-  useEffect(() => {
-    const root = document.documentElement
-    console.log('Theme changed to:', theme)
-    
-    if (theme === 'dark') {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
-    
-    localStorage.setItem('theme', theme)
-  }, [theme])
-
-  const toggleTheme = () => {
-    console.log('Toggle theme clicked')
-    setTheme(prev => {
-      const newTheme = prev === 'dark' ? 'light' : 'dark'
-      console.log('New theme:', newTheme)
-      return newTheme
-    })
-  }
 
   const nav = [
     { to: '/', label: 'Chat', icon: MessageSquare },
@@ -102,13 +60,6 @@ export default function Layout({ children }: { children: ReactNode }) {
 
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-          <button
-            onClick={toggleTheme}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200"
-          >
-            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
-          </button>
           <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-3">
             Query → Router → Agent → RAG → LLM → Response
           </p>
@@ -150,14 +101,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-          <button
-            onClick={toggleTheme}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200"
-          >
-            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
-          </button>
-          <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
             Query → Router → Agent → RAG → LLM → Response
           </p>
         </div>

@@ -2,7 +2,9 @@
 import time
 from functools import lru_cache
 from typing import Dict, Any, Optional
+
 import requests
+import yfinance as yf
 
 from src.core.config import get_settings
 
@@ -17,7 +19,12 @@ class MarketDataCache:
     def get(self, key: str) -> Optional[Dict[str, Any]]:
         """Get cached market data if available and not expired."""
         if key in self.cache:
-            data, timestamp = self.cache[key]
+            entry = self.cache[key]
+            if isinstance(entry, dict) and "data" in entry and "timestamp" in entry:
+                data = entry["data"]
+                timestamp = entry["timestamp"]
+            else:
+                data, timestamp = entry
             if time.time() - timestamp < self.cache_ttl:
                 return data
         return None
@@ -75,6 +82,57 @@ def _fetch_from_alpha_vantage(symbol: str) -> Dict[str, Any]:
         return {"error": "Data temporarily unavailable"}
 
 
+def _fetch_from_tavily(symbol: str) -> Dict[str, Any]:
+    """Use Tavily search as a fallback when market APIs fail to return a quote."""
+    s = get_settings()
+    if not s.tavily_api_key:
+        return {"error": "Tavily API key not configured"}
+
+    try:
+        url = "https://api.tavily.com/search"
+        payload = {
+            "api_key": s.tavily_api_key,
+            "query": f"{symbol} stock price current quote",
+            "search_depth": "basic",
+            "max_results": 3,
+            "include_answer": True,
+            "include_raw_content": False,
+        }
+        response = requests.post(url, json=payload, timeout=12)
+        if response.status_code != 200:
+            return {"error": f"Tavily API Error: {response.status_code}"}
+
+        data = response.json()
+        answer = data.get("answer") or ""
+        results = data.get("results") or []
+        text_snippet = "\n".join(item.get("content", "") for item in results if item.get("content"))
+        merged = f"{answer}\n{text_snippet}".strip()
+
+        price_match = None
+        for pattern in [r"\$\s?(\d+(?:\.\d+)?)", r"\b(\d+(?:\.\d+)?)\s*USD\b", r"\b(\d+(?:\.\d+)?)\s*per share\b"]:
+            match = __import__("re").search(pattern, merged, __import__("re").IGNORECASE)
+            if match:
+                price_match = float(match.group(1))
+                break
+
+        if price_match is None:
+            return {"error": "No quote found in Tavily search results"}
+
+        return {
+            "symbol": symbol.upper(),
+            "price": price_match,
+            "change": 0.0,
+            "change_percent": 0.0,
+            "currency": "USD",
+            "source": "tavily",
+            "timestamp": time.time(),
+        }
+    except requests.exceptions.RequestException:
+        return {"error": "Tavily network error"}
+    except Exception:
+        return {"error": "Tavily lookup failed"}
+
+
 @lru_cache(maxsize=1000)
 def get_real_time_quote(symbol: str) -> Dict[str, Any]:
     """Get real-time quote with intelligent caching."""
@@ -83,7 +141,7 @@ def get_real_time_quote(symbol: str) -> Dict[str, Any]:
     # Try cache first
     cached_data = market_cache.get(cache_key)
     if cached_data:
-        return cached_data["data"]
+        return cached_data
     
     # Fetch from API with rate limit handling
     try:
@@ -93,8 +151,14 @@ def get_real_time_quote(symbol: str) -> Dict[str, Any]:
             if not data.get("error"):
                 market_cache.set(cache_key, data)
                 return data
-        
-        # Fallback to yfinance
+
+        # Fallback to Tavily search when API-backed market data fails
+        tavily_data = _fetch_from_tavily(symbol)
+        if not tavily_data.get("error"):
+            market_cache.set(cache_key, tavily_data)
+            return tavily_data
+
+        # Final fallback to yfinance
         data = get_quote(symbol)
         if not data.get("error"):
             market_cache.set(cache_key, data)
@@ -104,8 +168,8 @@ def get_real_time_quote(symbol: str) -> Dict[str, Any]:
         # Fallback to cached data if available
         fallback_data = market_cache.get(cache_key)
         if fallback_data:
-            return fallback_data["data"]
-        
+            return fallback_data
+
         return {"error": "Market data temporarily unavailable"}
 
 
@@ -133,25 +197,37 @@ def get_market_indicators(symbol: str) -> Dict[str, Any]:
 
 
 def extract_symbols(message: str) -> list[str]:
-    """Extract stock symbols from a message using common patterns."""
+    """Extract real ticker symbols while ignoring filler/market words and common English terms."""
     import re
-    
-    # Common patterns for stock symbols
-    patterns = [
-        r'\b([A-Z]{1,5})\b',  # Uppercase 1-5 letters
-        r'\$([A-Z]{1,5})\b',  # $ followed by symbol
-        r'\b([A-Z]{1,5})\s+stock\b',  # Symbol + "stock"
-    ]
-    
+
+    text = message.upper()
+    banned_terms = {
+        "PRICE", "PRICES", "STOCK", "STOCKS", "MARKET", "QUOTE", "QUOTES",
+        "TRADING", "TICKER", "SYMBOL", "CURRENT", "LAST", "LIVE", "DATA",
+        "INDEX", "SECTOR", "PORTFOLIO", "INVESTMENT", "FINANCE", "ECONOMY",
+        "WHAT", "WHY", "WHEN", "WHERE", "WHICH", "HOW", "IS", "ARE", "THE", "OF",
+        "AND", "OR", "FOR", "TO", "FROM", "WITH", "IN", "ON", "AT", "IT", "THIS",
+        "THAT", "THERE", "HAVE", "HAS", "BUY", "SELL", "GET", "SHOW", "TELL",
+        "ME", "CAN", "YOU", "DO", "PLEASE", "A", "AN",
+    }
+
+    pattern = r"(?:^|[^A-Z])\$?([A-Z]{1,5})(?=\s|$|[^A-Z])"
+    matches = re.findall(pattern, text)
+
+    forbidden_company_names = {
+        "APPLE", "MICROSOFT", "GOOGLE", "AMAZON", "TESLA", "NETFLIX", "NVIDIA",
+        "META", "INTEL", "AMD", "FACEBOOK", "CITIGROUP", "BANK", "MONEY",
+        "STOCK", "SHARE", "PRICE", "QUOTE", "MARKET", "CURRENT", "LIVE",
+    }
+
     symbols = set()
-    for pattern in patterns:
-        matches = re.findall(pattern, message.upper())
-        for match in matches:
-            symbol = match if isinstance(match, str) else match[0]
-            if len(symbol) >= 1 and len(symbol) <= 5:
-                symbols.add(symbol)
-    
-    return list(symbols)
+    for symbol in matches:
+        if len(symbol) == 1:
+            continue
+        if len(symbol) >= 2 and len(symbol) <= 5 and symbol not in banned_terms and symbol not in forbidden_company_names:
+            symbols.add(symbol)
+
+    return sorted(symbols)
 
 
 def get_quote_for_message(message: str) -> list[dict[str, Any]]:

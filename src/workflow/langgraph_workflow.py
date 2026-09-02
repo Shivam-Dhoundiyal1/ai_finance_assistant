@@ -1,7 +1,6 @@
 """LangGraph workflow implementation for Finnie."""
+import gc
 from typing import Any
-
-from langgraph.graph import StateGraph, END
 
 from src.workflow.langgraph_nodes import (
     router_node,
@@ -78,9 +77,10 @@ def _route_after_data_enrichment(state: WorkflowState) -> str:
     return "llm"
 
 
-def create_workflow() -> StateGraph:
+def create_workflow():
     """Create and configure the optimized LangGraph workflow."""
-    
+    from langgraph.graph import END, StateGraph
+
     # Initialize the workflow with our state
     workflow = StateGraph(WorkflowState)
     
@@ -176,7 +176,8 @@ async def run_langgraph_workflow(message: str) -> dict[str, Any]:
     
     # Execute the workflow
     final_state = await app.ainvoke(initial_state)
-    
+    gc.collect()
+
     # Extract and return the relevant fields
     return {
         "response": final_state.get("response", ""),

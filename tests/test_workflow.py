@@ -127,6 +127,46 @@ class TestWorkflowNodes:
             assert result["agent"] == "finance_qa"
             assert result["reason"] == "General Q&A"
             assert result["routing_confidence"] == 0.9
+
+    @pytest.mark.asyncio
+    async def test_router_node_short_circuits_greeting(self):
+        """A simple greeting should stay in the friendly general-chat path."""
+        from src.workflow.langgraph_nodes import router_node
+        from src.workflow.state import WorkflowState
+
+        state: WorkflowState = {
+            "message": "Hi",
+            "agent": "",
+            "reason": "",
+        }
+
+        result = await router_node(state)
+
+        assert result["agent"] == "llm"
+        assert result["is_greeting"] is True
+        assert result["routing_confidence"] == 1.0
+
+    @pytest.mark.asyncio
+    async def test_router_node_short_circuits_obvious_quote_request(self):
+        """Obvious quote requests should route directly to market without LLM classification."""
+        from src.workflow.langgraph_nodes import router_node
+        from src.workflow.state import WorkflowState
+
+        state: WorkflowState = {
+            "message": "What is AAPL trading at?",
+            "agent": "",
+            "reason": "",
+        }
+
+        with patch("src.workflow.langgraph_nodes._get_llm") as mock_llm_factory:
+            mock_llm_factory.side_effect = AssertionError("LLM should not be called for obvious quote requests")
+
+            result = await router_node(state)
+
+            assert result["agent"] == "data_enrichment"
+            assert result["execution_mode"] == "fast"
+            assert "market" in result["reason"].lower()
+            assert result["routing_confidence"] >= 0.6
     
     @pytest.mark.asyncio
     async def test_rag_node(self):
@@ -168,6 +208,33 @@ class TestWorkflowNodes:
             result = await data_enrichment_node(state)
             
             assert result["agent"] == "market"
+
+    @pytest.mark.asyncio
+    async def test_llm_node_passes_market_data_for_data_enrichment_route(self):
+        """The chat workflow must pass market data even when the route label is data_enrichment."""
+        from src.workflow.langgraph_nodes import llm_node
+        from src.workflow.state import WorkflowState
+
+        state: WorkflowState = {
+            "message": "What is AAPL stock price?",
+            "agent": "data_enrichment",
+            "reason": "Direct market route",
+            "market_data": "AAPL: $214.56 (+0.52%)",
+            "context": [],
+            "attempt_count": 0,
+        }
+
+        with patch("src.agents.market.MarketAgent") as mock_market_agent:
+            mock_agent = AsyncMock()
+            mock_agent.generate_response.return_value = "AAPL: $214.56 (+0.52%)"
+            mock_market_agent.return_value = mock_agent
+
+            result = await llm_node(state)
+
+            assert result["response"] == "AAPL: $214.56 (+0.52%)"
+            mock_agent.generate_response.assert_called_once()
+            call_kwargs = mock_agent.generate_response.call_args.kwargs
+            assert call_kwargs["additional_data"]["market_data"] == "AAPL: $214.56 (+0.52%)"
             assert "market_data" in result
     
     @pytest.mark.asyncio

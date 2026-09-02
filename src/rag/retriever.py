@@ -1,9 +1,7 @@
 """Retrieve relevant context from the knowledge base for RAG."""
+import gc
 from pathlib import Path
 from typing import Any, Dict, List
-
-from langchain_chroma import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from src.core.config import get_settings
 from src.rag.knowledge_base import KnowledgeBase
@@ -15,18 +13,22 @@ _vector_store = None
 
 
 def _get_embeddings():
-    """Lazy load and cache embeddings model."""
+    """Lazy-load and cache embeddings model."""
     global _embedding_model
     if _embedding_model is None:
+        from langchain_community.embeddings import HuggingFaceEmbeddings
+
         kb = KnowledgeBase()
         _embedding_model = HuggingFaceEmbeddings(model_name=kb.embedding_model)
     return _embedding_model
 
 
 def _get_vector_store():
-    """Lazy load and cache vector store."""
+    """Lazy-load and cache the Chroma vector store."""
     global _vector_store
     if _vector_store is None:
+        from langchain_chroma import Chroma
+
         kb = KnowledgeBase()
         root = Path(__file__).resolve().parents[2]
         persist_path = kb.resolve_persist_path(root)
@@ -52,16 +54,24 @@ def retrieve_context(query: str, top_k: int | None = None) -> List[Dict[str, Any
     """
     s = get_settings()
     k = top_k if top_k is not None else s.rag_top_k
-    retriever = _build_retriever(top_k=k)
-    documents = retriever.invoke(query)
+    retriever = None
+    documents = []
 
-    context_items: List[Dict[str, Any]] = []
-    for rank, doc in enumerate(documents, start=1):
-        metadata = doc.metadata or {}
-        context_items.append({
-            "text": doc.page_content,
-            "source": metadata.get("source"),
-            "chunk_index": metadata.get("chunk_index"),
-            "rank": rank,
-        })
-    return context_items
+    try:
+        retriever = _build_retriever(top_k=k)
+        documents = retriever.invoke(query)
+
+        context_items: List[Dict[str, Any]] = []
+        for rank, doc in enumerate(documents, start=1):
+            metadata = doc.metadata or {}
+            context_items.append({
+                "text": doc.page_content,
+                "source": metadata.get("source"),
+                "chunk_index": metadata.get("chunk_index"),
+                "rank": rank,
+            })
+        return context_items
+    finally:
+        del retriever
+        del documents
+        gc.collect()

@@ -4,15 +4,42 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List
 
+from src.data.market_service import get_quote
 
-def get_sample_portfolio() -> str:
-    """Return a sample portfolio summary for demo. In production, load from user input/session."""
-    return (
-        "Sample portfolio (for demo):\n"
-        "- Total value: $50,000\n"
-        "- Allocation: 60% stocks (e.g. index funds), 30% bonds, 10% cash.\n"
-        "Users can input their own holdings in the Portfolio tab for personalized analysis."
-    )
+
+def load_user_portfolio(user_id: str) -> Dict[str, Any]:
+    """Load a user's portfolio from disk, or return the default demo portfolio."""
+    file_path = os.path.join(os.path.dirname(__file__), "..", "data", "portfolios", f"{user_id}_portfolio.json")
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    return {
+        "user_id": user_id,
+        "holdings": [
+            {"symbol": "AAPL", "quantity": 10, "avg_cost": 150.0},
+            {"symbol": "MSFT", "quantity": 5, "avg_cost": 250.0},
+            {"symbol": "GOOGL", "quantity": 8, "avg_cost": 120.0},
+        ],
+        "total_value": 50000.0,
+        "allocation": {"AAPL": 30.0, "MSFT": 25.0, "GOOGL": 19.2},
+        "last_updated": "Never",
+    }
+
+
+def get_sample_portfolio() -> Dict[str, Any]:
+    """Return a sample portfolio structure for demo and analysis workflows."""
+    return {
+        "user_id": "demo_user",
+        "holdings": [
+            {"symbol": "AAPL", "quantity": 10, "avg_cost": 150.0},
+            {"symbol": "MSFT", "quantity": 8, "avg_cost": 260.0},
+            {"symbol": "GOOGL", "quantity": 6, "avg_cost": 140.0},
+        ],
+        "total_value": 50000.0,
+        "allocation": {"AAPL": 30.0, "MSFT": 25.0, "GOOGL": 19.2},
+        "last_updated": "demo",
+    }
 
 
 def parse_user_portfolio(positions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -53,23 +80,7 @@ def save_portfolio(user_id: str, holdings: List[Dict[str, Any]]) -> bool:
 def get_user_portfolio(user_id: str) -> Dict[str, Any]:
     """Load user portfolio from file storage."""
     try:
-        file_path = os.path.join(os.path.dirname(__file__), "..", "data", "portfolios", f"{user_id}_portfolio.json")
-        if os.path.exists(file_path):
-            with open(file_path, 'r') as f:
-                return json.load(f)
-        else:
-            # Return default portfolio if none exists
-            return {
-                "user_id": user_id,
-                "holdings": [
-                    {"symbol": "AAPL", "quantity": 10, "avg_cost": 150.0},
-                    {"symbol": "MSFT", "quantity": 5, "avg_cost": 250.0},
-                    {"symbol": "GOOGL", "quantity": 8, "avg_cost": 120.0}
-                ],
-                "total_value": 50000.0,
-                "allocation": {"AAPL": 30.0, "MSFT": 25.0, "GOOGL": 19.2},
-                "last_updated": "Never"
-            }
+        return load_user_portfolio(user_id)
     except Exception:
         return {"holdings": [], "total_value": 0, "allocation": {}, "last_updated": "Error"}
 

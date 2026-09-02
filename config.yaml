@@ -22,11 +22,12 @@ rag:
   top_k: 5
   knowledge_path: "src/data/knowledge"
 
-# Market Data - set ALPHA_VANTAGE_API_KEY for real data
+# Market Data - set ALPHA_VANTAGE_API_KEY or TAVILY_API_KEY for live data
 market:
-  provider: "yfinance"  # yfinance | alpha_vantage
+  provider: "yfinance"  # yfinance | alpha_vantage | tavily
   cache_ttl_seconds: 300
   fallback_on_error: true
+  tavily_api_key: ""
 
 # Agent routing keywords (workflow uses these to route queries)
 routing:
